@@ -1,0 +1,289 @@
+<html>
+<head>
+    <title>Timeline demo</title>
+
+    <script type="text/javascript" src="../timeline.js"></script>
+    <link rel="stylesheet" type="text/css" href="../timeline.css">
+
+    <style type="text/css">
+        body {
+            font: 14pt arial;
+        }
+        input {
+            font: 14pt arial;
+        }
+
+        /* custom styles for individual items, load this after timeline.css */
+
+        div.green {
+            background-color: greenyellow;
+            border-color: green;
+        }
+
+        /* create a custom sized dot at the bottom of the red item */
+        div.red {
+            background-color: red;
+            border-color: darkred;
+            color: white;
+            font-family: monospace;
+            box-shadow: 0 0 10px gray;
+        }
+        div.timeline-event-dot.red {
+            border-radius: 10px;
+            border-width: 10px;
+        }
+        div.timeline-event-line.red {
+            border-width: 5px;
+        }
+        div.timeline-event-box.red {
+            border-radius: 0;
+            border-width: 2px;
+            font-size: 24pt;
+            font-weight: bold;
+        }
+
+        div.orange {
+            background-color: gold;
+            border-color: orange;
+        }
+        div.timeline-event-selected.orange {
+            /* custom colors for selected orange items */
+            background-color: orange;
+            border-color: orangered;
+        }
+
+        div.magenta {
+            background-color: magenta;
+            border-color: purple;
+            color: white;
+        }
+
+        /* our custom classes overrule the styles for selected events,
+           so lets define a new style for the selected events */
+        div.timeline-event-selected {
+            background-color: white;
+            border-color: black;
+            color: black;
+            box-shadow: 0 0 10px gray;
+        }
+
+
+        /* custom classes for selected dates */
+		div.timeline-axis-grid-weekends {
+			background-color: #F0F0F0;
+		}
+
+		div.timeline-axis-grid-holiday {
+			background-color: #EAEABC;
+		}
+
+		div.timeline-axis-grid-saturday-overide {
+			background-color: #DAEABC;
+		}
+		</style>
+
+    <script type="text/javascript">
+        var timeline;
+        var data;
+
+        // Called when the page is loaded
+        function drawVisualization() {
+            // Create and populate a data table.
+            data = [
+                {
+                    'start': new Date(2012,6,20),
+                    'content': 'default'
+                },
+                {
+                    'start': new Date(2012,6,25),
+                    'end': new Date(2012,7,10),
+                    'content': 'orange',
+                    'className': 'orange'
+                },
+                {
+                    'start': new Date(2012,7,08),
+                    'end': new Date(2012,7,25),
+                    'content': 'magenta',
+                    'className': 'magenta'
+                },
+                {
+                    'start': new Date(2012,7,23),
+                    'content': 'green',
+                    'className': 'green'
+                },
+                {
+                    'start': new Date(2012,8,01),
+                    'content': 'red',
+                    'className': 'red'
+                },
+                {
+                    'start': new Date(2012,8,05),
+                    'end': new Date(2012,8,25),
+                    'content': 'orange',
+                    'className': 'orange'
+                },
+                {
+                    'start': new Date(2012,9,2),
+                    'content': 'magenta',
+                    'className': 'magenta'
+                }
+            ];
+
+            // specify options
+            var options = {
+                'axisOnTop': true
+				//'editable': true
+            };
+
+            // Instantiate our table object.
+            timeline = new links.Timeline(document.getElementById('mytimeline'));
+
+			// Add a listener and Populate the map of dates that will have classes applied
+			links.events.addListener(timeline, 'rangechange', applyClassesToDates);
+			dateMapOfClasses();
+
+            // Draw our table with the data we created locally.
+            timeline.draw(data, options);
+
+			// Invoke for the first visualisation
+			applyClassesToDates();
+        }
+
+
+		// JSON array of dates to apply a class to (such as shading or highlights).
+		// The dates are strings in the format "yyyymmdd" (note - datepicker js equivalent: yymmdd).
+		// Special case is "weekends" to trigger a class for all weekends.
+		// To avoid conflicts, the order is important - the last one found found wins.
+		var classesForDates = [
+			{
+				"date": "weekends",
+				"divClass": "timeline-axis-grid-weekends"
+			},
+			{
+				"date": "20120809",
+				"divClass": "timeline-axis-grid-holiday"
+			},
+			{
+				"date": "20120818",
+				"divClass": "timeline-axis-grid-saturday-overide"
+			}
+		];
+		function stringFromDate(date) {
+			var mm = date.getMonth() + 1;
+			var dd = date.getDate();
+			return "" + date.getFullYear() + zeroPad(mm) + zeroPad(dd);
+		}
+		function zeroPad(num) {
+			return ("00" + num).substring(("" + num).length);
+		}
+		// Create a map of dates for quick reference:
+		var dateMap = {};
+		var weekends = "";
+		function dateMapOfClasses() {
+			for (var j = 0; j < classesForDates.length; j++) {
+				if (classesForDates[j].date == "weekends") {
+					weekends = classesForDates[j].divClass;
+				}
+				else {
+					dateMap[classesForDates[j].date] = classesForDates[j].divClass;
+				}
+			}
+		}
+
+		// External function to iterate through dates on the axis applying classes.
+		// Because the width of the date can vary depending on zoom, the axis reuse
+		// (as with labels, etc in ...StartOverwriting, etc) cannot be leveraged.
+		// So each invocation clears and redraws the supplied range of dates.
+		function applyClassesToDates() {
+			var start = timeline.screenToTime(0);
+			var end = timeline.screenToTime(timeline.size.contentWidth);
+			var axis = timeline.dom.axis;
+			if (axis.classBlocks) {
+				// Cleanup previous
+				for (var num = 0; num < axis.classBlocks.length; num++) {
+					var classBlock = axis.classBlocks[num];
+					axis.frame.removeChild(classBlock);
+				}
+			}
+			axis.classBlocks = [];
+			if (isDayRange()) {
+				// Get the start date and make it the start of the day
+				var curDate = new Date(start.valueOf());
+				curDate.setHours(0, 0, 0, 0);
+				var cur = curDate.valueOf();
+				var stop = end.valueOf();
+				var curDay = start.getDay();
+				var sat = 0;
+				if (weekends != "") {
+					sat = cur;
+					// Advance sat to the first Saturday viewable
+					if (curDay < 6) {
+						sat += (6 - curDay) * (1000 * 60 * 60 * 24);
+					}
+				}
+				// Calculate the screen size of a day
+				var x = Math.abs((stop - start.valueOf()) / (1000 * 60 * 60 * 24));
+				var x2 = Math.round(timeline.size.contentWidth / x);
+				var limit = 0;
+				// Daily iteration
+				while (limit < 1000 && cur < stop) {
+					curDate = new Date(cur);
+					var dateString = stringFromDate(curDate);
+					if (cur == sat) {
+						x = timeline.timeToScreen(curDate);
+						repaintAxisDate(x, (x2 * 2), weekends);
+						// Jump to the next Saturday
+						sat += 7 * (1000 * 60 * 60 * 24);
+						limit++;
+					}
+					// Individual date can override weekends
+					if (dateMap[dateString]) {
+						x = timeline.timeToScreen(curDate);
+						repaintAxisDate(x, x2, dateMap[dateString]);
+						limit++;
+					}
+					// Add to cur for the next day
+					cur += 1 * (1000 * 60 * 60 * 24);
+				}
+			}
+		}
+
+		function repaintAxisDate(x, x2, className) {
+			var sizes = timeline.size,
+				frame = timeline.dom.axis.frame,
+				classBlocks = timeline.dom.axis.classBlocks,
+				block;
+			// create a vertical block
+			block = document.createElement("DIV");
+			block.className = className;
+			block.style.position = "absolute";
+			block.style.width = x2 + "px";
+			// add it to the frame and reference array 
+			frame.appendChild(block);
+			classBlocks.push(block);
+			// position it
+			block.style.top = (timeline.options.axisOnTop ? sizes.axis.height : 0) + "px";
+			block.style.height = sizes.contentHeight + "px";
+			block.style.left = (x - sizes.axis.lineMinorWidth/2) + "px";
+		}
+
+		function isDayRange() {
+			switch (timeline.step.scale) {
+				case links.Timeline.StepDate.SCALE.WEEKDAY:
+				case links.Timeline.StepDate.SCALE.DAY:
+					return true;
+				default:
+					return false;
+			}
+		}
+
+    </script>
+</head>
+<body onload="drawVisualization()">
+<p>This page demonstrates the timeline visualization with custom css classes
+    for individual items.</p>
+
+<div id="mytimeline"></div>
+
+</body>
+</html>
